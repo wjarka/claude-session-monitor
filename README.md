@@ -29,7 +29,7 @@ Don't be afraid, experiment, keep an open mind and have fun with it.
 
 ## Overview
 
-A Python-based real-time monitoring tool for Claude API token usage, costs, and session limits. Displays a terminal-based dashboard with progress bars showing token consumption and time remaining in active sessions.
+A Python-based real-time monitoring tool for Claude Code Max Sessions usage, costs, and session limits. Displays a terminal-based dashboard with progress bars showing token consumption and time remaining in active sessions.
 
 **Inspired by:** [Claude-Code-Usage-Monitor](https://github.com/Maciek-roboblog/Claude-Code-Usage-Monitor) - I liked the concept but needed a different technical implementation, so I created my own version.
 
@@ -62,7 +62,7 @@ A Python-based real-time monitoring tool for Claude API token usage, costs, and 
 
 5. **Run the monitor:**
    ```bash
-   python3 claude_monitor.py
+   python3 claude_monitor.py --start-day 15
    ```
 
 ## What It Shows
