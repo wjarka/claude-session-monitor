@@ -1,0 +1,17 @@
+[project]
+name = "claude-token-monitor"
+version = "1.0.0"
+description = "A console-based monitor for Claude API token usage, using data from the 'ccusage' tool."
+authors = [{ name = "Your Name", email = "your@email.com" }]
+requires-python = ">=3.9"
+
+# Skrypt nie ma zewnętrznych zależności dla Pythona 3.9+
+# `zoneinfo` jest w bibliotece standardowej.
+# Jeśli chciałbyś wspierać starsze wersje Pythona, dodałbyś tu:
+# dependencies = [
+#     "pytz; python_version < '3.9'",
+# ]
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
