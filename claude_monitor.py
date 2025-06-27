@@ -9,21 +9,45 @@ import argparse
 from datetime import datetime, timedelta, date
 from zoneinfo import ZoneInfo
 
-# --- Configuration ---
-VERSION = "1.0.0"
-TOTAL_MONTHLY_SESSIONS = 50
-REFRESH_INTERVAL_SECONDS = 1
-CCUSAGE_FETCH_INTERVAL_SECONDS = 10
-CONFIG_DIR = os.path.expanduser("~/.config/claude-monitor")
-CONFIG_FILE = os.path.join(CONFIG_DIR, "config.json")
-
-# --- Alert Configuration (macOS only) ---
-TIME_REMAINING_ALERT_MINUTES = 30
-INACTIVITY_ALERT_MINUTES = 10
-
-# --- Time Zones ---
-UTC_TZ = ZoneInfo("UTC")
-LOCAL_TZ = ZoneInfo("Europe/Warsaw")
+# --- Configuration Singleton ---
+class Config:
+    _instance = None
+    
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+            cls._instance._initialized = False
+        return cls._instance
+    
+    def __init__(self):
+        if self._initialized:
+            return
+        
+        # Default configuration
+        self.VERSION = "1.0.0"
+        self.TOTAL_MONTHLY_SESSIONS = 50
+        self.REFRESH_INTERVAL_SECONDS = 1
+        self.CCUSAGE_FETCH_INTERVAL_SECONDS = 10
+        self.CONFIG_DIR = os.path.expanduser("~/.config/claude-monitor")
+        self.CONFIG_FILE = os.path.join(self.CONFIG_DIR, "config.json")
+        
+        # Alert Configuration (macOS only)
+        self.TIME_REMAINING_ALERT_MINUTES = 30
+        self.INACTIVITY_ALERT_MINUTES = 10
+        
+        # Time Zones
+        self.UTC_TZ = ZoneInfo("UTC")
+        self.LOCAL_TZ = ZoneInfo("Europe/Warsaw")
+        
+        self._initialized = True
+    
+    @classmethod
+    def instance(cls):
+        return cls()
+    
+    def set_timezone(self, timezone_str):
+        """Set the local timezone"""
+        self.LOCAL_TZ = ZoneInfo(timezone_str)
 
 # --- ANSI Colors ---
 class Colors:
@@ -53,23 +77,26 @@ def show_macos_notification(title, message):
         except (subprocess.CalledProcessError, FileNotFoundError): pass
 
 def clear_screen_for_refresh():
-    print("\033[H\033[J", end="")
+    print("\033[H\033[J\033[?25l", end="")
 
 def parse_utc_time(time_str: str) -> datetime:
+    config = Config.instance()
     time_str = time_str.split('.')[0]
-    return datetime.strptime(time_str, "%Y-%m-%dT%H:%M:%S").replace(tzinfo=UTC_TZ)
+    return datetime.strptime(time_str, "%Y-%m-%dT%H:%M:%S").replace(tzinfo=config.UTC_TZ)
 
 def save_config(data: dict):
+    config = Config.instance()
     try:
-        os.makedirs(CONFIG_DIR, exist_ok=True)
-        with open(CONFIG_FILE, 'w') as f:
+        os.makedirs(config.CONFIG_DIR, exist_ok=True)
+        with open(config.CONFIG_FILE, 'w') as f:
             json.dump(data, f, indent=2)
     except IOError: pass
 
 def load_config() -> dict:
-    if not os.path.exists(CONFIG_FILE): return {}
+    config = Config.instance()
+    if not os.path.exists(config.CONFIG_FILE): return {}
     try:
-        with open(CONFIG_FILE, 'r') as f: return json.load(f)
+        with open(config.CONFIG_FILE, 'r') as f: return json.load(f)
     except (IOError, json.JSONDecodeError): return {}
 
 def run_ccusage(since_date: str = None) -> dict:
@@ -123,45 +150,110 @@ def main(args):
     os.system('cls' if os.name == 'nt' else 'clear')
     config = load_config()
     
-    # Step 1: Determine max_tokens
-    max_tokens_so_far = config.get("max_tokens")
-    if not max_tokens_so_far or args.recalculate:
-        print(f"{Colors.WARNING}Scanning history to find maximum tokens...{Colors.ENDC}")
-        full_history = run_ccusage()
-        if full_history and "blocks" in full_history:
-            all_tokens = [b.get("totalTokens", 0) for b in full_history["blocks"] if not b.get("isGap", False)]
-            if all_tokens:
-                max_tokens_so_far = max(all_tokens)
-                config["max_tokens"] = max_tokens_so_far
-                print(f"{Colors.GREEN}New maximum found and saved: {max_tokens_so_far:,} tokens.{Colors.ENDC}")
-        time.sleep(2); os.system('cls' if os.name == 'nt' else 'clear')
-
-    if not config.get("max_tokens"): config["max_tokens"] = 35000
-
-    # Step 2: Determine costs and sessions for the current period
+    # Smart single data fetch - determine optimal date range
     sub_start_date = get_subscription_period_start(args.start_day)
     sub_start_date_str = sub_start_date.strftime('%Y-%m-%d')
     
+    # Determine what data we need
+    need_full_rescan = args.recalculate
+    need_max_tokens = not config.get("max_tokens") or args.recalculate
+    need_monthly_recalc = args.recalculate or config.get("monthly_meta", {}).get("period_start") != sub_start_date_str
+    
+    if need_full_rescan:
+        print(f"{Colors.WARNING}Full recalculation - fetching all data...{Colors.ENDC}")
+        fetch_since = None  # Get everything
+    elif need_monthly_recalc:
+        print(f"{Colors.WARNING}New billing period - fetching data from {sub_start_date_str}...{Colors.ENDC}")
+        fetch_since = sub_start_date.strftime('%Y%m%d')
+    else:
+        # Incremental: get data from last week to catch any new sessions
+        last_check = config.get("last_incremental_update")
+        if last_check:
+            since_date = datetime.strptime(last_check, '%Y-%m-%d') - timedelta(days=2)
+        else:
+            since_date = datetime.now() - timedelta(days=7)
+        fetch_since = since_date.strftime('%Y%m%d')
+        print(f"{Colors.CYAN}Incremental update from {since_date.strftime('%Y-%m-%d')}...{Colors.ENDC}")
+    
+    # Single ccusage call!
+    data = run_ccusage(fetch_since)
+    if not data or "blocks" not in data:
+        print(f"{Colors.FAIL}Failed to fetch usage data{Colors.ENDC}")
+        return
+    
+    blocks = data["blocks"]
+    
+    # Process max tokens
+    max_tokens_so_far = config.get("max_tokens", 35000)
+    if need_max_tokens:
+        all_tokens = [b.get("totalTokens", 0) for b in blocks if not b.get("isGap", False)]
+        if all_tokens:
+            new_max = max(all_tokens)
+            if new_max > max_tokens_so_far:
+                max_tokens_so_far = new_max
+                config["max_tokens"] = max_tokens_so_far
+                config["last_max_tokens_scan"] = datetime.now().strftime('%Y-%m-%d')
+                print(f"{Colors.GREEN}New maximum found: {max_tokens_so_far:,} tokens.{Colors.ENDC}")
+    else:
+        # Check recent data for new max
+        recent_tokens = [b.get("totalTokens", 0) for b in blocks if not b.get("isGap", False)]
+        if recent_tokens:
+            recent_max = max(recent_tokens)
+            if recent_max > max_tokens_so_far:
+                max_tokens_so_far = recent_max
+                config["max_tokens"] = max_tokens_so_far
+                print(f"{Colors.GREEN}New maximum found: {max_tokens_so_far:,} tokens.{Colors.ENDC}")
+    
+    # Process monthly data
     monthly_meta = config.get("monthly_meta", {})
-    if args.recalculate or monthly_meta.get("period_start") != sub_start_date_str:
-        print(f"{Colors.WARNING}Calculating statistics for the new period (from {sub_start_date_str})...{Colors.ENDC}")
-        monthly_data = run_ccusage(sub_start_date.strftime('%Y%m%d'))
+    processed_sessions = config.get("processed_sessions", [])
+    
+    if need_monthly_recalc:
+        # Full monthly recalculation - filter blocks by billing period
+        period_start_utc = parse_utc_time(sub_start_date_str + "T00:00:00")
+        period_blocks = [b for b in blocks 
+                        if not b.get("isGap", False) and 
+                        parse_utc_time(b["startTime"]) >= period_start_utc]
+        completed_blocks = [b for b in period_blocks if not b.get("isActive", False)]
         
-        sessions_used = 0; cost_this_month = 0.0
-        if "blocks" in monthly_data:
-            non_gap_blocks = [b for b in monthly_data["blocks"] if not b.get("isGap", False)]
-            sessions_used = len(non_gap_blocks)
-            cost_this_month = sum(b.get("costUSD", 0) for b in non_gap_blocks)
-            
+        sessions_used = len(completed_blocks)
+        cost_this_month = sum(b.get("costUSD", 0) for b in completed_blocks)
+        processed_sessions = [b["id"] for b in completed_blocks]
+        
         monthly_meta = {"period_start": sub_start_date_str, "cost": cost_this_month, "sessions": sessions_used}
         config["monthly_meta"] = monthly_meta
-        time.sleep(2); os.system('cls' if os.name == 'nt' else 'clear')
+        config["processed_sessions"] = processed_sessions
+    else:
+        # Incremental update: process only new sessions within billing period
+        period_start_utc = parse_utc_time(sub_start_date_str + "T00:00:00")
+        new_sessions_found = 0
+        for block in blocks:
+            if (block.get("isGap", False) or 
+                block["id"] in processed_sessions or
+                parse_utc_time(block["startTime"]) < period_start_utc):
+                continue
+            
+            # Only process completed sessions (not active)
+            if not block.get("isActive", False):
+                monthly_meta["sessions"] = monthly_meta.get("sessions", 0) + 1
+                monthly_meta["cost"] = monthly_meta.get("cost", 0) + block.get("costUSD", 0)
+                processed_sessions.append(block["id"])
+                new_sessions_found += 1
+        
+        if new_sessions_found > 0:
+            print(f"{Colors.GREEN}Found {new_sessions_found} new completed sessions.{Colors.ENDC}")
+            config["monthly_meta"] = monthly_meta
+            config["processed_sessions"] = processed_sessions
+    
+    config["last_incremental_update"] = datetime.now().strftime('%Y-%m-%d')
+    os.system('cls' if os.name == 'nt' else 'clear')
 
     save_config(config)
     
     # --- Loop state variables ---
+    config_instance = Config.instance()
     sessions_used = config.get("monthly_meta", {}).get("sessions", 0)
-    sessions_left = TOTAL_MONTHLY_SESSIONS - sessions_used
+    sessions_left = config_instance.TOTAL_MONTHLY_SESSIONS - sessions_used
     cost_this_month_completed = config.get("monthly_meta", {}).get("cost", 0)
     max_tokens_so_far = config.get("max_tokens", 35000)
     
@@ -180,9 +272,9 @@ def main(args):
     # --- Main loop ---
     while True:
         try:
-            now_utc = datetime.now(UTC_TZ)
+            now_utc = datetime.now(config_instance.UTC_TZ)
             
-            if time.time() - last_fetch_time > CCUSAGE_FETCH_INTERVAL_SECONDS:
+            if time.time() - last_fetch_time > config_instance.CCUSAGE_FETCH_INTERVAL_SECONDS:
                 today_str = datetime.now().strftime('%Y%m%d')
                 fetched_data = run_ccusage(today_str)
                 if fetched_data and fetched_data.get("blocks"):
@@ -200,19 +292,24 @@ def main(args):
                         break
             
             if not active_block and current_session_id:
-                # Session just ended - update monthly stats
-                monthly_data = run_ccusage(sub_start_date.strftime('%Y%m%d'))
-                if "blocks" in monthly_data:
-                    non_gap_blocks = [b for b in monthly_data["blocks"] if not b.get("isGap", False)]
-                    sessions_used = len(non_gap_blocks)
-                    cost_this_month_completed = sum(b.get("costUSD", 0) for b in non_gap_blocks)
+                # Session just ended - update monthly stats from cached data
+                if "blocks" in cached_data:
+                    # Filter blocks for current billing period
+                    period_start = parse_utc_time(sub_start_date_str + "T00:00:00")
+                    period_blocks = [b for b in cached_data["blocks"] 
+                                   if not b.get("isGap", False) and 
+                                   parse_utc_time(b["startTime"]) >= period_start]
+                    completed_blocks = [b for b in period_blocks if not b.get("isActive", False)]
+                    
+                    sessions_used = len(completed_blocks)
+                    cost_this_month_completed = sum(b.get("costUSD", 0) for b in completed_blocks)
                     
                     # Update config and recalculate derived values
                     config["monthly_meta"]["sessions"] = sessions_used
                     config["monthly_meta"]["cost"] = cost_this_month_completed
                     save_config(config)
                     
-                    sessions_left = TOTAL_MONTHLY_SESSIONS - sessions_used
+                    sessions_left = config_instance.TOTAL_MONTHLY_SESSIONS - sessions_used
                     if days_remaining > 0:
                         avg_sessions = sessions_left / days_remaining
                     else:
@@ -222,7 +319,7 @@ def main(args):
                 last_activity_time = None; last_token_count = -1
 
             clear_screen_for_refresh()
-            now_local = datetime.now(LOCAL_TZ)
+            now_local = datetime.now(config_instance.LOCAL_TZ)
             print(f"{Colors.HEADER}{Colors.BOLD}✦ ✧ ✦ CLAUDE TOKEN MONITOR ✦ ✧ ✦{Colors.ENDC}")
             print(f"{Colors.HEADER}{'=' * 35}{Colors.ENDC}\n")
 
@@ -246,16 +343,16 @@ def main(args):
                 time_total = end_time - parse_utc_time(active_block["startTime"])
                 time_progress_percent = (1 - (time_remaining.total_seconds() / time_total.total_seconds())) * 100
 
-                if not time_alert_fired and time_remaining < timedelta(minutes=TIME_REMAINING_ALERT_MINUTES):
-                    show_macos_notification("Claude Monitor", f"Less than {TIME_REMAINING_ALERT_MINUTES} minutes remaining in the session.")
+                if not time_alert_fired and time_remaining < timedelta(minutes=config_instance.TIME_REMAINING_ALERT_MINUTES):
+                    show_macos_notification("Claude Monitor", f"Less than {config_instance.TIME_REMAINING_ALERT_MINUTES} minutes remaining in the session.")
                     time_alert_fired = True
 
                 if tokens_current > last_token_count:
                     last_activity_time = now_utc; last_token_count = tokens_current; inactivity_alert_fired = False
                 else:
                     inactive_duration = now_utc - last_activity_time
-                    if not inactivity_alert_fired and inactive_duration > timedelta(minutes=INACTIVITY_ALERT_MINUTES):
-                        show_macos_notification("Claude Monitor", f"No activity for {INACTIVITY_ALERT_MINUTES} minutes.")
+                    if not inactivity_alert_fired and inactive_duration > timedelta(minutes=config_instance.INACTIVITY_ALERT_MINUTES):
+                        show_macos_notification("Claude Monitor", f"No activity for {config_instance.INACTIVITY_ALERT_MINUTES} minutes.")
                         inactivity_alert_fired = True
                 
                 cost_current_session = active_block.get("costUSD", 0)
@@ -275,9 +372,10 @@ def main(args):
             print(footer_line1)
             print(footer_line2)
 
-            time.sleep(REFRESH_INTERVAL_SECONDS)
+            time.sleep(config_instance.REFRESH_INTERVAL_SECONDS)
 
         except KeyboardInterrupt:
+            print("\033[?25h", end="")  # Show cursor
             print(f"\n\n{Colors.WARNING}Closing monitor...{Colors.ENDC}")
             sys.exit(0)
 
@@ -286,7 +384,8 @@ if __name__ == "__main__":
     parser.add_argument("--start-day", type=int, default=1, help="Day of the month the billing period starts.")
     parser.add_argument("--recalculate", action="store_true", help="Forces re-scanning of history to update \nstored values (max tokens and costs).")
     parser.add_argument("--test-alert", action="store_true", help="Sends a test system notification (macOS only) and exits.")
-    parser.add_argument("--version", action="version", version=f"Claude Session Monitor {VERSION}")
+    parser.add_argument("--timezone", type=str, default="Europe/Warsaw", help="Timezone for display (e.g., 'America/New_York', 'UTC', 'Asia/Tokyo'). Default: Europe/Warsaw")
+    parser.add_argument("--version", action="version", version=f"Claude Session Monitor {Config.instance().VERSION}")
     args = parser.parse_args()
     
     if args.test_alert:
@@ -297,6 +396,15 @@ if __name__ == "__main__":
     
     if not 1 <= args.start_day <= 28:
         print(f"{Colors.FAIL}Error: Start day must be between 1 and 28.{Colors.ENDC}")
+        sys.exit(1)
+    
+    # Validate and set timezone
+    try:
+        config = Config.instance()
+        config.set_timezone(args.timezone)
+    except Exception as e:
+        print(f"{Colors.FAIL}Error: Invalid timezone '{args.timezone}'. {e}{Colors.ENDC}")
+        print(f"{Colors.WARNING}Common timezones: UTC, America/New_York, Europe/London, Asia/Tokyo, Australia/Sydney{Colors.ENDC}")
         sys.exit(1)
         
     main(args)
