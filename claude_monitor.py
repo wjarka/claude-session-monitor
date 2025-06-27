@@ -320,7 +320,7 @@ def main(args):
 
             clear_screen_for_refresh()
             now_local = datetime.now(config_instance.LOCAL_TZ)
-            print(f"{Colors.HEADER}{Colors.BOLD}✦ ✧ ✦ CLAUDE TOKEN MONITOR ✦ ✧ ✦{Colors.ENDC}")
+            print(f"{Colors.HEADER}{Colors.BOLD}✦ ✧ ✦ CLAUDE SESSION MONITOR ✦ ✧ ✦{Colors.ENDC}")
             print(f"{Colors.HEADER}{'=' * 35}{Colors.ENDC}\n")
 
             if active_block:
