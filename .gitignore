@@ -159,3 +159,6 @@ Temporary Items
 # Application specific
 config.json
 *.log
+cache/
+*.cache
+.cache/
