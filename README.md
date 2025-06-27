@@ -55,6 +55,12 @@ A Python-based real-time monitoring tool for Claude Code Max Sessions usage, cos
    ```
    Note: The script uses only standard library modules for Python 3.9+, so no additional packages are required for modern Python versions.
 
+   **macOS Notifications:** The script first tries to use `terminal-notifier` (if installed) for better notifications, then falls back to built-in `osascript`. To install the optional enhanced notifier:
+   ```bash
+   brew install terminal-notifier
+   ```
+   On other platforms, notifications are silently skipped.
+
 4. **Download the script:**
    ```bash
    curl -O https://raw.githubusercontent.com/emssik/claude-session-monitor/main/claude_monitor.py
