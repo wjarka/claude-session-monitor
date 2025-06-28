@@ -304,18 +304,21 @@ def main(args):
                                    parse_utc_time(b["startTime"]) >= period_start]
                     completed_blocks = [b for b in period_blocks if not b.get("isActive", False)]
                     
-                    sessions_used = len(completed_blocks)
-                    cost_this_month_completed = sum(b.get("costUSD", 0) for b in completed_blocks)
+                    new_sessions_used = len(completed_blocks)
+                    new_cost_this_month_completed = sum(b.get("costUSD", 0) for b in completed_blocks)
                     
                     # Update processed sessions list to maintain consistency
                     processed_sessions = [b["id"] for b in completed_blocks]
                     
                     # Update config and recalculate derived values
-                    config["monthly_meta"]["sessions"] = sessions_used
-                    config["monthly_meta"]["cost"] = cost_this_month_completed
+                    config["monthly_meta"]["sessions"] = new_sessions_used
+                    config["monthly_meta"]["cost"] = new_cost_this_month_completed
                     config["processed_sessions"] = processed_sessions
                     save_config(config)
                     
+                    # Update main display variables immediately for next iteration
+                    sessions_used = new_sessions_used
+                    cost_this_month_completed = new_cost_this_month_completed
                     sessions_left = config_instance.TOTAL_MONTHLY_SESSIONS - sessions_used
                     if days_remaining > 0:
                         avg_sessions = sessions_left / days_remaining
