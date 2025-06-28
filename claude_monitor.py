@@ -268,6 +268,9 @@ def main(args):
     cached_data = {"blocks": []}; last_fetch_time = 0
     current_session_id = None; time_alert_fired = False; inactivity_alert_fired = False
     last_activity_time = None; last_token_count = -1
+    
+    # Store the billing period start for consistent use in main loop
+    billing_period_fetch_since = sub_start_date.strftime('%Y%m%d')
 
     # --- Main loop ---
     while True:
@@ -275,8 +278,8 @@ def main(args):
             now_utc = datetime.now(config_instance.UTC_TZ)
             
             if time.time() - last_fetch_time > config_instance.CCUSAGE_FETCH_INTERVAL_SECONDS:
-                today_str = datetime.now().strftime('%Y%m%d')
-                fetched_data = run_ccusage(today_str)
+                # Use billing period start date to get all sessions for current period
+                fetched_data = run_ccusage(billing_period_fetch_since)
                 if fetched_data and fetched_data.get("blocks"):
                     cached_data = fetched_data
                 last_fetch_time = time.time()
@@ -304,9 +307,13 @@ def main(args):
                     sessions_used = len(completed_blocks)
                     cost_this_month_completed = sum(b.get("costUSD", 0) for b in completed_blocks)
                     
+                    # Update processed sessions list to maintain consistency
+                    processed_sessions = [b["id"] for b in completed_blocks]
+                    
                     # Update config and recalculate derived values
                     config["monthly_meta"]["sessions"] = sessions_used
                     config["monthly_meta"]["cost"] = cost_this_month_completed
+                    config["processed_sessions"] = processed_sessions
                     save_config(config)
                     
                     sessions_left = config_instance.TOTAL_MONTHLY_SESSIONS - sessions_used
