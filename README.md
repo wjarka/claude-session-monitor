@@ -35,7 +35,7 @@ A Python-based real-time monitoring tool for Claude Code Max Sessions usage, cos
 
 ## Requirements
 
-- **macOS** (optimized for macOS notifications, but runs on other platforms)
+- **Cross-platform support:** macOS, Linux (including Arch Linux with Hyprland), and Windows
 - **Python 3.9+** (uses `zoneinfo` from standard library)
 - **ccusage CLI tool** - Required for fetching Claude API usage data
 
@@ -55,11 +55,31 @@ A Python-based real-time monitoring tool for Claude Code Max Sessions usage, cos
    ```
    Note: The script uses only standard library modules for Python 3.9+, so no additional packages are required for modern Python versions.
 
-   **macOS Notifications:** The script first tries to use `terminal-notifier` (if installed) for better notifications, then falls back to built-in `osascript`. To install the optional enhanced notifier:
-   ```bash
-   brew install terminal-notifier
-   ```
-   On other platforms, notifications are silently skipped.
+   **Cross-platform Notifications:**
+   
+   - **macOS:** Uses `terminal-notifier` (if installed) or falls back to `osascript`
+     ```bash
+     brew install terminal-notifier  # Optional, for enhanced notifications
+     ```
+   
+   - **Linux:** Uses `notify-send` (libnotify) or `dunstify` (dunst notifications)
+     ```bash
+     # Arch Linux / Arch-based distributions
+     sudo pacman -S libnotify          # For notify-send
+     sudo pacman -S dunst              # For dunstify (recommended for Hyprland)
+     
+     # Ubuntu/Debian
+     sudo apt install libnotify-bin    # For notify-send
+     sudo apt install dunst            # For dunstify
+     
+     # Fedora
+     sudo dnf install libnotify        # For notify-send
+     sudo dnf install dunst            # For dunstify
+     ```
+   
+   - **Windows:** Uses PowerShell toast notifications (built-in)
+   
+   If no notification system is available, the monitor continues working without notifications.
 
 4. **Download the script:**
    ```bash
@@ -79,7 +99,7 @@ The monitor displays:
 - **Percentage of monthly limit utilized**
 - **Real-time session tracking** with time remaining
 - **Cost tracking** for current and maximum usage
-- **macOS notifications** for time warnings and inactivity alerts
+- **Cross-platform notifications** for time warnings and inactivity alerts
 
 ## Usage and Options
 
@@ -95,7 +115,7 @@ options:
                         Day of the month the billing period starts.
   --recalculate         Forces re-scanning of history to update
                         stored values (max tokens and costs).
-  --test-alert          Sends a test system notification (macOS only) and exits.
+  --test-alert          Sends a test system notification and exits.
   --timezone TIMEZONE   Timezone for display (e.g., 'America/New_York', 'UTC', 'Asia/Tokyo'). Default: Europe/Warsaw
   --version             Show version information and exit.
 ```
@@ -112,13 +132,57 @@ python3 claude_monitor.py --start-day 15
 # Force recalculation of historical data
 python3 claude_monitor.py --recalculate
 
-# Test notifications (macOS only)
+# Test notifications (cross-platform)
 python3 claude_monitor.py --test-alert
 
 # Use different timezone (default is Europe/Warsaw)
 python3 claude_monitor.py --timezone UTC
 python3 claude_monitor.py --timezone America/New_York
 python3 claude_monitor.py --timezone Asia/Tokyo
+```
+
+## Linux Setup (Arch Linux + Hyprland)
+
+For optimal experience on Arch Linux with Hyprland, follow these additional steps:
+
+### 1. Install Dependencies
+```bash
+# Install ccusage (required)
+# Follow instructions at: https://github.com/ryoppippi/ccusage
+
+# Install notification support (recommended)
+sudo pacman -S libnotify dunst
+
+# Optional: Install a notification daemon if not already running
+# Dunst is recommended for Hyprland
+sudo pacman -S dunst
+```
+
+### 2. Configure Dunst for Hyprland (Optional)
+If you want to customize notifications, create a dunst config:
+```bash
+mkdir -p ~/.config/dunst
+cp /etc/dunst/dunstrc ~/.config/dunst/
+```
+
+Edit `~/.config/dunst/dunstrc` to customize notification appearance and behavior.
+
+### 3. Test Notifications
+```bash
+# Test the notification system
+python3 claude_monitor.py --test-alert
+
+# If notifications don't appear, check if a notification daemon is running:
+pgrep -x dunst || pgrep -x mako
+
+# Start dunst if needed:
+dunst &
+```
+
+### 4. Auto-start (Optional)
+To start the monitor automatically with Hyprland, add to your `~/.config/hypr/hyprland.conf`:
+```bash
+exec-once = cd /path/to/claude-monitor && python3 claude_monitor.py
 ```
 
 ## Configuration

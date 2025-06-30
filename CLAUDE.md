@@ -17,7 +17,7 @@ This is a Python-based Claude API token usage monitor that provides real-time tr
 1. **Configuration Management**: Stores user settings and historical data in `~/.config/claude-monitor/config.json`
 2. **Data Fetching**: Integrates with `ccusage` command-line tool to retrieve usage blocks
 3. **Real-time Monitoring**: Tracks active sessions and updates display every second
-4. **Notification System**: macOS notifications for time warnings and inactivity alerts
+4. **Notification System**: Cross-platform notifications for time warnings and inactivity alerts
 5. **Billing Period Tracking**: Calculates usage against monthly subscription limits
 
 ## Development Commands
@@ -36,7 +36,7 @@ python3 claude_monitor.py --start-day 15
 # Force recalculation of historical data
 python3 claude_monitor.py --recalculate
 
-# Test notifications (macOS only)
+# Test notifications (cross-platform)
 python3 claude_monitor.py --test-alert
 ```
 
@@ -44,7 +44,7 @@ python3 claude_monitor.py --test-alert
 
 - **System Requirement**: `ccusage` CLI tool must be installed and accessible in PATH
 - **Python**: Requires Python 3.9+ (uses `zoneinfo` from standard library)
-- **Platform**: Optimized for macOS (notifications), but runs on other platforms
+- **Platform**: Cross-platform support for macOS, Linux (including Arch Linux with Hyprland), and Windows
 
 ## Configuration Constants
 

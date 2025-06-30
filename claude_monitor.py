@@ -6,6 +6,7 @@ import time
 import shutil
 import subprocess
 import argparse
+import calendar
 from datetime import datetime, timedelta, date
 from zoneinfo import ZoneInfo
 
@@ -31,7 +32,7 @@ class Config:
         self.CONFIG_DIR = os.path.expanduser("~/.config/claude-monitor")
         self.CONFIG_FILE = os.path.join(self.CONFIG_DIR, "config.json")
         
-        # Alert Configuration (macOS only)
+        # Alert Configuration (cross-platform)
         self.TIME_REMAINING_ALERT_MINUTES = 30
         self.INACTIVITY_ALERT_MINUTES = 10
         
@@ -62,19 +63,80 @@ class Colors:
 
 # --- Helper Functions ---
 
-def show_macos_notification(title, message):
-    if sys.platform != "darwin": return
-    if shutil.which("terminal-notifier"):
-        try:
-            command = ["terminal-notifier", "-title", title, "-message", message, "-sound", "default"]
-            subprocess.run(command, check=True, capture_output=True, text=True)
-            return
-        except (subprocess.CalledProcessError, FileNotFoundError): pass
-    else:
+def show_notification(title, message):
+    """Cross-platform notification function supporting macOS, Linux, and Windows"""
+    
+    # macOS notifications
+    if sys.platform == "darwin":
+        # Try terminal-notifier first (better notifications)
+        if shutil.which("terminal-notifier"):
+            try:
+                command = ["terminal-notifier", "-title", title, "-message", message, "-sound", "default"]
+                subprocess.run(command, check=True, capture_output=True, text=True)
+                return
+            except (subprocess.CalledProcessError, FileNotFoundError): 
+                pass
+        
+        # Fallback to osascript
         try:
             script = f'display notification "{message}" with title "{title}"'
             subprocess.run(["osascript", "-e", script], check=True, capture_output=True, text=True)
-        except (subprocess.CalledProcessError, FileNotFoundError): pass
+            return
+        except (subprocess.CalledProcessError, FileNotFoundError): 
+            pass
+    
+    # Linux notifications
+    elif sys.platform.startswith("linux"):
+        # Try notify-send (most common Linux notification system)
+        if shutil.which("notify-send"):
+            try:
+                command = ["notify-send", title, message, "--urgency=normal"]
+                subprocess.run(command, check=True, capture_output=True, text=True)
+                return
+            except (subprocess.CalledProcessError, FileNotFoundError):
+                pass
+        
+        # Try dunst notification (common in tiling window managers)
+        if shutil.which("dunstify"):
+            try:
+                command = ["dunstify", "-u", "normal", title, message]
+                subprocess.run(command, check=True, capture_output=True, text=True)
+                return
+            except (subprocess.CalledProcessError, FileNotFoundError):
+                pass
+    
+    # Windows notifications
+    elif sys.platform == "win32":
+        try:
+            # Try using Windows toast notifications via powershell
+            script = f'''
+            [Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime] | Out-Null
+            [Windows.UI.Notifications.ToastNotification, Windows.UI.Notifications, ContentType = WindowsRuntime] | Out-Null
+            [Windows.Data.Xml.Dom.XmlDocument, Windows.Data.Xml.Dom.XmlDocument, ContentType = WindowsRuntime] | Out-Null
+            
+            $template = @"
+            <toast>
+                <visual>
+                    <binding template="ToastText02">
+                        <text id="1">{title}</text>
+                        <text id="2">{message}</text>
+                    </binding>
+                </visual>
+            </toast>
+"@
+            
+            $xml = New-Object Windows.Data.Xml.Dom.XmlDocument
+            $xml.LoadXml($template)
+            $toast = New-Object Windows.UI.Notifications.ToastNotification $xml
+            [Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier("Claude Monitor").Show($toast)
+            '''
+            subprocess.run(["powershell", "-Command", script], check=True, capture_output=True, text=True)
+            return
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            pass
+    
+    # If all notification methods fail, silently continue
+    # This ensures the monitor continues working even without notifications
 
 def clear_screen_for_refresh():
     print("\033[H\033[J\033[?25l", end="")
@@ -99,6 +161,15 @@ def load_config() -> dict:
         with open(config.CONFIG_FILE, 'r') as f: return json.load(f)
     except (IOError, json.JSONDecodeError): return {}
 
+def safe_replace_day(target_date: date, day: int) -> date:
+    """Safely replace the day of a date, handling month overflow (e.g., Feb 30 -> Feb 28/29)"""
+    try:
+        return target_date.replace(day=day)
+    except ValueError:
+        # Day doesn't exist in this month, use the last day of the month
+        last_day = calendar.monthrange(target_date.year, target_date.month)[1]
+        return target_date.replace(day=last_day)
+
 def run_ccusage(since_date: str = None) -> dict:
     command = ["ccusage", "blocks", "-j"]
     if since_date: command.extend(["-s", since_date])
@@ -111,29 +182,34 @@ def run_ccusage(since_date: str = None) -> dict:
 def get_subscription_period_start(start_day: int) -> date:
     today = date.today()
     if today.day >= start_day:
-        return today.replace(day=start_day)
+        # Current month, try to set the start day
+        return safe_replace_day(today, start_day)
     else:
+        # Previous month
         first_day_of_current_month = today.replace(day=1)
         last_day_of_previous_month = first_day_of_current_month - timedelta(days=1)
-        return last_day_of_previous_month.replace(day=min(start_day, last_day_of_previous_month.day))
+        return safe_replace_day(last_day_of_previous_month, start_day)
 
 def get_next_renewal_date(start_day: int) -> date:
-    """Oblicza datę następnego odnowienia abonamentu."""
+    """Calculate the next subscription renewal date."""
     today = date.today()
-    # Jeśli jesteśmy już po dniu odnowienia w tym miesiącu...
+    # If we're already past the renewal day this month...
     if today.day >= start_day:
-        # ...następne odnowienie jest w przyszłym miesiącu.
+        # ...next renewal is in the next month.
         next_month = today.month + 1
         next_year = today.year
         if next_month > 12:
             next_month = 1
             next_year += 1
-    # Jeśli jesteśmy jeszcze przed dniem odnowienia...
+    # If we're still before the renewal day...
     else:
-        # ...następne odnowienie jest w tym miesiącu.
+        # ...next renewal is this month.
         next_month = today.month
         next_year = today.year
-    return date(next_year, next_month, start_day)
+    
+    # Create the target date safely
+    target_date = date(next_year, next_month, 1)
+    return safe_replace_day(target_date, start_day)
 
 def create_progress_bar(percentage: float, width: int = 40) -> str:
     filled_width = int(width * percentage / 100)
@@ -354,7 +430,7 @@ def main(args):
                 time_progress_percent = (1 - (time_remaining.total_seconds() / time_total.total_seconds())) * 100
 
                 if not time_alert_fired and time_remaining < timedelta(minutes=config_instance.TIME_REMAINING_ALERT_MINUTES):
-                    show_macos_notification("Claude Monitor", f"Less than {config_instance.TIME_REMAINING_ALERT_MINUTES} minutes remaining in the session.")
+                    show_notification("Claude Monitor", f"Less than {config_instance.TIME_REMAINING_ALERT_MINUTES} minutes remaining in the session.")
                     time_alert_fired = True
 
                 if tokens_current > last_token_count:
@@ -362,7 +438,7 @@ def main(args):
                 else:
                     inactive_duration = now_utc - last_activity_time
                     if not inactivity_alert_fired and inactive_duration > timedelta(minutes=config_instance.INACTIVITY_ALERT_MINUTES):
-                        show_macos_notification("Claude Monitor", f"No activity for {config_instance.INACTIVITY_ALERT_MINUTES} minutes.")
+                        show_notification("Claude Monitor", f"No activity for {config_instance.INACTIVITY_ALERT_MINUTES} minutes.")
                         inactivity_alert_fired = True
                 
                 cost_current_session = active_block.get("costUSD", 0)
@@ -393,19 +469,19 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Monitor Claude API token and cost usage.", formatter_class=argparse.RawTextHelpFormatter)
     parser.add_argument("--start-day", type=int, default=1, help="Day of the month the billing period starts.")
     parser.add_argument("--recalculate", action="store_true", help="Forces re-scanning of history to update \nstored values (max tokens and costs).")
-    parser.add_argument("--test-alert", action="store_true", help="Sends a test system notification (macOS only) and exits.")
+    parser.add_argument("--test-alert", action="store_true", help="Sends a test system notification and exits.")
     parser.add_argument("--timezone", type=str, default="Europe/Warsaw", help="Timezone for display (e.g., 'America/New_York', 'UTC', 'Asia/Tokyo'). Default: Europe/Warsaw")
     parser.add_argument("--version", action="version", version=f"Claude Session Monitor {Config.instance().VERSION}")
     args = parser.parse_args()
     
     if args.test_alert:
         print(f"{Colors.CYAN}Sending test alert...{Colors.ENDC}")
-        show_macos_notification("Test Notification", "If you see this, alerts are working correctly.")
+        show_notification("Test Notification", "If you see this, alerts are working correctly.")
         print(f"{Colors.GREEN}Alert sending command executed.{Colors.ENDC}")
         sys.exit(0)
     
-    if not 1 <= args.start_day <= 28:
-        print(f"{Colors.FAIL}Error: Start day must be between 1 and 28.{Colors.ENDC}")
+    if not 1 <= args.start_day <= 31:
+        print(f"{Colors.FAIL}Error: Start day must be between 1 and 31.{Colors.ENDC}")
         sys.exit(1)
     
     # Validate and set timezone
