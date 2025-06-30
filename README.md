@@ -4,9 +4,11 @@ A Python-based real-time monitoring tool for Claude Code Max Sessions usage, cos
 
 ## Acknowledgments
 
-This project is based on the original work by [Daniel Roziecki](https://github.com/emssik/claude-session-monitor). Special thanks to Daniel for creating the initial concept and implementation that inspired this enhanced version.
+This project is based on the work by [Daniel Roziecki](https://github.com/emssik/claude-session-monitor). Special thanks to Daniel for creating the concept and implementation that inspired this enhanced version.
 
-**Original inspiration:** [Claude-Code-Usage-Monitor](https://github.com/Maciek-roboblog/Claude-Code-Usage-Monitor) by Maciek-roboblog.
+**Original inspiration:** The initial idea comes from [Claude-Code-Usage-Monitor](https://github.com/Maciek-roboblog/Claude-Code-Usage-Monitor) by [Maciek-roboblog](https://github.com/Maciek-roboblog). Daniel's implementation built upon this concept, and this fork continues that evolution.
+
+Thanks to both contributors for their innovative work in Claude API monitoring tools!
 
 ## Features
 
