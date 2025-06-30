@@ -1,37 +1,22 @@
 # Claude Session Monitor
 
-**Code Authors:** Gemini 2.5 Pro & Claude Code
-**Human Role:** Screenshots + Requirements
-
-As a human, I don't know what the code looks like and I'm completely not interested in it. The tool should simply do what I need. This is also a "state of mind" that one needs to mature to ;)
-
-## History
-
-https://www.linkedin.com/posts/daniel-roziecki-znajomy-powiedzia%C5%82-mi-%C5%BCe-do-tego-trzeba-activity-7343537196462714881-tFat (PL Only)
-
-A friend told me that you need the right mindset for this, and I think he's right.
-
-3 days ago, someone shared a link to a cool app on GitHub (Claude Token Monitor). While I really liked the idea itself, it turned out that its operating philosophy wasn't the best for me + I was missing certain information.
-
-So... I took a screenshot. I fired up Gemini 2.5 Pro.
-
-I uploaded the image, described what the app does and what I wanted it to do, and after 30 minutes, after a few iterations, I have a working script that does exactly what I need.
-
-It shows me how many sessions are left until the end of the subscription, how much money I would spend on tokens if I didn't have the Max subscription, how much time is left until the end of the actual 5-hour window (because that's how the Max subscription works - you have 50 five-hour sessions per month). It sends me notifications 30 minutes before the window ends and when nothing happens for 10 minutes (after all, it has to pay for itself :) ).
-
-And these are all elements that the original app didn't have.
-
-So I took a great idea and with a model (based on a screenshot and my description) in 30 minutes, 100% customized it for myself.
-
-Yes, such things are no longer just in the Era ;)
-
-Don't be afraid, experiment, keep an open mind and have fun with it.
-
-## Overview
-
 A Python-based real-time monitoring tool for Claude Code Max Sessions usage, costs, and session limits. Displays a terminal-based dashboard with progress bars showing token consumption and time remaining in active sessions.
 
-**Inspired by:** [Claude-Code-Usage-Monitor](https://github.com/Maciek-roboblog/Claude-Code-Usage-Monitor) - I liked the concept but needed a different technical implementation, so I created my own version.
+## Acknowledgments
+
+This project is based on the original work by [Daniel Roziecki](https://github.com/emssik/claude-session-monitor). Special thanks to Daniel for creating the initial concept and implementation that inspired this enhanced version.
+
+**Original inspiration:** [Claude-Code-Usage-Monitor](https://github.com/Maciek-roboblog/Claude-Code-Usage-Monitor) by Maciek-roboblog.
+
+## Features
+
+- **Real-time monitoring** of Claude Code Max Sessions
+- **Token usage tracking** with progress bars and cost calculations
+- **Session time remaining** with 5-hour window tracking
+- **Cross-platform notifications** for time warnings and inactivity alerts
+- **Monthly statistics** showing sessions used and remaining
+- **Billing period tracking** with customizable start dates
+- **Historical data** persistence and maximum usage tracking
 
 ## Requirements
 
@@ -83,7 +68,7 @@ A Python-based real-time monitoring tool for Claude Code Max Sessions usage, cos
 
 4. **Download the script:**
    ```bash
-   curl -O https://raw.githubusercontent.com/emssik/claude-session-monitor/main/claude_monitor.py
+   curl -O https://raw.githubusercontent.com/wjarka/claude-session-monitor/main/claude_monitor.py
    ```
 
 5. **Run the monitor:**
@@ -215,6 +200,3 @@ You can modify these values in the source code:
 
 MIT License - see [LICENSE](LICENSE) file for details.
 
-## Credits
-
-Inspired by [Claude-Code-Usage-Monitor](https://github.com/Maciek-roboblog/Claude-Code-Usage-Monitor) by Maciek-roboblog.
