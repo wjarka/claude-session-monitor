@@ -156,10 +156,21 @@ def save_config(data: dict):
 
 def load_config() -> dict:
     config = Config.instance()
-    if not os.path.exists(config.CONFIG_FILE): return {}
+    default_config = {
+        "user_settings": {
+            "start_day": 1,
+            "timezone": "Europe/Warsaw"
+        }
+    }
+    if not os.path.exists(config.CONFIG_FILE): return default_config
     try:
-        with open(config.CONFIG_FILE, 'r') as f: return json.load(f)
-    except (IOError, json.JSONDecodeError): return {}
+        with open(config.CONFIG_FILE, 'r') as f:
+            loaded_config = json.load(f)
+            # Ensure user_settings exists
+            if "user_settings" not in loaded_config:
+                loaded_config["user_settings"] = default_config["user_settings"]
+            return loaded_config
+    except (IOError, json.JSONDecodeError): return default_config
 
 def safe_replace_day(target_date: date, day: int) -> date:
     """Safely replace the day of a date, handling month overflow (e.g., Feb 30 -> Feb 28/29)"""
@@ -466,11 +477,18 @@ def main(args):
             sys.exit(0)
 
 if __name__ == "__main__":
+    # Load saved user settings
+    saved_config = load_config()
+    user_settings = saved_config.get("user_settings", {})
+    
     parser = argparse.ArgumentParser(description="Monitor Claude API token and cost usage.", formatter_class=argparse.RawTextHelpFormatter)
-    parser.add_argument("--start-day", type=int, default=1, help="Day of the month the billing period starts.")
+    parser.add_argument("--start-day", type=int, default=user_settings.get("start_day", 1), 
+                       help=f"Day of the month the billing period starts. Default: {user_settings.get('start_day', 1)}")
     parser.add_argument("--recalculate", action="store_true", help="Forces re-scanning of history to update \nstored values (max tokens and costs).")
     parser.add_argument("--test-alert", action="store_true", help="Sends a test system notification and exits.")
-    parser.add_argument("--timezone", type=str, default="Europe/Warsaw", help="Timezone for display (e.g., 'America/New_York', 'UTC', 'Asia/Tokyo'). Default: Europe/Warsaw")
+    parser.add_argument("--timezone", type=str, default=user_settings.get("timezone", "Europe/Warsaw"), 
+                       help=f"Timezone for display (e.g., 'America/New_York', 'UTC', 'Asia/Tokyo'). Default: {user_settings.get('timezone', 'Europe/Warsaw')}")
+    parser.add_argument("--save-settings", action="store_true", help="Save current start-day and timezone as defaults.")
     parser.add_argument("--version", action="version", version=f"Claude Session Monitor {Config.instance().VERSION}")
     args = parser.parse_args()
     
@@ -492,5 +510,18 @@ if __name__ == "__main__":
         print(f"{Colors.FAIL}Error: Invalid timezone '{args.timezone}'. {e}{Colors.ENDC}")
         print(f"{Colors.WARNING}Common timezones: UTC, America/New_York, Europe/London, Asia/Tokyo, Australia/Sydney{Colors.ENDC}")
         sys.exit(1)
+    
+    # Handle --save-settings flag
+    if args.save_settings:
+        saved_config["user_settings"] = {
+            "start_day": args.start_day,
+            "timezone": args.timezone
+        }
+        save_config(saved_config)
+        print(f"{Colors.GREEN}Settings saved successfully!{Colors.ENDC}")
+        print(f"  Start day: {args.start_day}")
+        print(f"  Timezone: {args.timezone}")
+        print(f"\nThese will now be used as defaults when running claude_monitor.py")
+        sys.exit(0)
         
     main(args)
