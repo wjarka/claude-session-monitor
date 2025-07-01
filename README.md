@@ -92,26 +92,30 @@ The monitor displays:
 
 ```bash
 python3 claude_monitor.py --help
-usage: claude_monitor.py [-h] [--start-day START_DAY] [--recalculate] [--test-alert] [--timezone TIMEZONE] [--version]
+usage: claude_monitor.py [-h] [--start-day START_DAY] [--recalculate] [--test-alert] [--timezone TIMEZONE] [--save-settings] [--version]
 
 Claude Session Monitor - Monitor Claude API token and cost usage.
 
 options:
   -h, --help            show this help message and exit
   --start-day START_DAY
-                        Day of the month the billing period starts.
+                        Day of the month the billing period starts. Default: 1
   --recalculate         Forces re-scanning of history to update
                         stored values (max tokens and costs).
   --test-alert          Sends a test system notification and exits.
   --timezone TIMEZONE   Timezone for display (e.g., 'America/New_York', 'UTC', 'Asia/Tokyo'). Default: Europe/Warsaw
+  --save-settings       Save current start-day and timezone as defaults.
   --version             Show version information and exit.
 ```
 
 ### Examples
 
 ```bash
-# Basic usage
+# Basic usage (uses saved settings or defaults)
 python3 claude_monitor.py
+
+# Save your subscription settings for future use
+python3 claude_monitor.py --start-day 30 --timezone America/New_York --save-settings
 
 # Custom billing start day (15th of each month)
 python3 claude_monitor.py --start-day 15
@@ -177,9 +181,22 @@ exec-once = cd /path/to/claude-monitor && python3 claude_monitor.py
 The tool automatically creates and manages configuration in `~/.config/claude-monitor/config.json`. This file stores:
 
 - Historical maximum token and cost values
-- User preferences (billing start day)
+- User preferences (billing start day, timezone)
 - Session tracking data
 - Alert settings
+
+### Persistent Settings
+
+You can save your preferred settings to avoid typing them every time:
+
+```bash
+# Save your subscription start day and timezone
+python3 claude_monitor.py --start-day 30 --timezone "America/New_York" --save-settings
+
+# From now on, just run:
+python3 claude_monitor.py
+# It will automatically use start-day=30 and timezone=America/New_York
+```
 
 ### Key Configuration Constants
 
